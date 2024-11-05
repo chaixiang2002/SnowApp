@@ -19,44 +19,48 @@ class BrightnessService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("BrightnessService", "Service started")
-        Thread {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val serverSocket = ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))
                 Log.d("BrightnessService", "ServerSocket listening on port $port")
                 while (true) {
                     val socket: Socket = serverSocket.accept()
-                    handleClient(socket)
+                    Log.d("BrightnessService", "New connection accepted")
+                    // 使用协程处理每个连接
+                    launch { handleClient(socket) }
                 }
             } catch (e: Exception) {
                 Log.e("BrightnessService", "Error: ${e.message}")
                 e.printStackTrace()
             }
-        }.start()
+        }
         return START_STICKY
     }
 
+    private suspend fun handleClient(socket: Socket) {
+        Log.d("BrightnessService", "Handling new client")
 
-    private fun handleClient(socket: Socket) {
-        val input = socket.getInputStream().bufferedReader()
-        val message = input.readLine() ?: return
-        Log.d("brightServices", message)
+        val buffer = ByteArray(1024)
+        val bytesRead = socket.getInputStream().read(buffer)
+        if (bytesRead != -1) {
+            val message = String(buffer, 0, bytesRead)
+            Log.d("BrightnessService", "Received message: $message")
 
-        if (message.startsWith("LightsService|setBrightness|")) {
-            val brightness = message.split("|")[2].toIntOrNull()
-            brightness?.let {
-                if (it in 0..255) { // 修改范围为 0-255
-                    setBrightness(it)
-                    socket.getOutputStream().write("$it\n".toByteArray())  // 回复亮度值
-                    socket.getOutputStream().flush()  // 刷新输出流
+                if (message.startsWith("LightsService|setBrightness|")) {
+                val brightness = message.split("|")[2].toIntOrNull()
+                brightness?.let {
+                    if (it in 0..255) {
+                        setBrightness(it)
+                        socket.getOutputStream().write("$it\n".toByteArray())
+                        socket.getOutputStream().flush()
+                    }
                 }
+            } else {
+                socket.getOutputStream().write("asd".toByteArray())
+                socket.getOutputStream().flush()
             }
-        } else {
-            socket.getOutputStream().write("asd".toByteArray())  // 非预期请求时回复"asd"
-            Log.d("BrightnessService", "asd")
-            socket.getOutputStream().flush()  // 刷新输出流
         }
-
-        socket.close()  // 关闭连接
+        socket.close()
     }
 
 
